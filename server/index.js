@@ -52,5 +52,6 @@ app.get('/api/devices', (req, res) => {
   res.json({ devices: Object.keys(devices).map(id => ({ deviceId:id, latest: devices[id].latest })) });
 });
 
-const PORT = process.env.PORT || 4000;
-server.listen(PORT, ()=>console.log('server listening on', PORT));
+const PORT = process.env.PORT || 8000;
+const HOST = process.env.HOST || '0.0.0.0';
+server.listen(PORT, HOST, ()=>console.log(`server listening on ${HOST}:${PORT}`));

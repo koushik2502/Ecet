@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
-const SERVER = 'http://localhost:4000'; // server URL
+const SERVER = process.env.REACT_APP_SERVER_URL || `https://${window.location.hostname}:8000`; // server URL
 
 function MapBounds({ devices }) {
   const map = useMap();
