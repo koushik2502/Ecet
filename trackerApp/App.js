@@ -2,8 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, Button, PermissionsAndroid, Platform, Alert } from 'react-native';
 import { v4 as uuidv4 } from 'uuid';
 import io from 'socket.io-client';
+import Geolocation from 'react-native-geolocation-service';
 
-const SERVER_URL = 'http://10.0.2.2:4000'; // Android emulator host IP
+// Use environment variable or default to emulator host
+const SERVER_URL = __DEV__ 
+  ? 'http://10.0.2.2:8000'  // Android emulator host IP for development
+  : 'https://fe0019ff-a1d4-4601-a483-4283d7702511-00-3vpg0cs1vpn5a.sisko.replit.dev'; // Production server (Replit uses standard HTTPS port)
 
 export default function App(){
   const [deviceId] = useState(() => uuidv4());
@@ -66,24 +70,48 @@ export default function App(){
   const requestPermissions = async () => {
     if (Platform.OS === 'android'){
       try {
-        const perms = [
+        // Request location permissions first (most important)
+        const locationPermissions = [
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-          PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
-          PermissionsAndroid.PERMISSIONS.READ_SMS,
         ];
         
-        const results = await PermissionsAndroid.requestMultiple(perms);
-        console.log('Permission results:', results);
+        const locationResults = await PermissionsAndroid.requestMultiple(locationPermissions);
+        console.log('Location permission results:', locationResults);
         
-        if (results['android.permission.ACCESS_FINE_LOCATION'] === 'granted') {
-          setStatus(isConnected ? 'Ready to track' : 'Permissions granted - Connecting...');
+        const fineLocationGranted = locationResults['android.permission.ACCESS_FINE_LOCATION'] === 'granted';
+        const coarseLocationGranted = locationResults['android.permission.ACCESS_COARSE_LOCATION'] === 'granted';
+        
+        if (fineLocationGranted || coarseLocationGranted) {
+          setStatus(isConnected ? 'Ready to track' : 'Location permissions granted - Connecting...');
+          
+          // Optional: Request SMS permissions separately
+          const smsPermissions = [
+            PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+            PermissionsAndroid.PERMISSIONS.READ_SMS,
+          ];
+          
+          const smsResults = await PermissionsAndroid.requestMultiple(smsPermissions);
+          console.log('SMS permission results:', smsResults);
+          
         } else {
+          Alert.alert(
+            'Location Permission Required',
+            'This app needs location permission to track your device. Please grant location access in settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => {
+                console.log('User should open app settings');
+                setStatus('Please enable location permission in settings');
+              }}
+            ]
+          );
           setStatus('Location permission required');
         }
       } catch(e) {
         console.warn('Error with permissions:', e);
-        setStatus('Permission error');
+        setStatus('Permission error: ' + e.message);
+        Alert.alert('Permission Error', 'Failed to request permissions: ' + e.message);
       }
     }
   };
@@ -94,21 +122,58 @@ export default function App(){
       return;
     }
 
-    // Simulate location updates via WebSocket
+    // Get real GPS location using react-native-geolocation-service
     trackingIntervalRef.current = setInterval(() => {
-      const simulatedLocation = {
-        deviceId,
-        latitude: 17.3850 + (Math.random() - 0.5) * 0.01,
-        longitude: 78.4867 + (Math.random() - 0.5) * 0.01,
-        timestamp: new Date().toISOString(),
-        type: 'location'
-      };
-      
-      setLocation(simulatedLocation);
-      
-      // Send via WebSocket
-      socketRef.current.emit('location_update', simulatedLocation);
-    }, 3000); // Every 3 seconds
+      Geolocation.getCurrentPosition(
+        (position) => {
+          const realLocation = {
+            deviceId,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: new Date().toISOString(),
+            type: 'location'
+          };
+          
+          setLocation(realLocation);
+          
+          // Send real location via WebSocket
+          socketRef.current.emit('location_update', realLocation);
+          
+          // Also send via HTTP API for compatibility
+          fetch(`${SERVER_URL}/api/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deviceId,
+              type: 'location',
+              payload: {
+                latitude: realLocation.latitude,
+                longitude: realLocation.longitude,
+                accuracy: realLocation.accuracy,
+                timestamp: realLocation.timestamp
+              }
+            })
+          }).catch(err => console.log('HTTP update error:', err));
+        },
+        (error) => {
+          console.log('Location error:', error.code, error.message);
+          Alert.alert('Location Error', `Cannot get location: ${error.message}`);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 10000,
+          forceRequestLocation: true,
+          forceLocationManager: false,
+          showLocationDialog: true,
+          accuracy: {
+            android: 'high',
+            ios: 'best'
+          }
+        }
+      );
+    }, 5000); // Every 5 seconds
   };
 
   const startTracking = () => {

@@ -1,0 +1,15 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "full_system package ------------------- Folders: - server/    : Node.js backend (run on your PC) - dashboard/ : React dashboard (run in browser) - trackerApp/: React Native bare app skeleton (Android native code included)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "react-native-geolocation-service": "^5.3.1"
+  }
+}
